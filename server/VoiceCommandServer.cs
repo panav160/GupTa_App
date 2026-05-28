@@ -20,12 +20,14 @@ namespace GupTaServer
         private volatile bool _waitCancelled = false;
         private string appDir;
         private string pythonExe;
+        private string whisperDir;
 
         public ServerGUI()
         {
             appDir    = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
             pythonExe = Path.Combine(appDir, "python", "python.exe");
             if (!File.Exists(pythonExe)) pythonExe = "python";
+            whisperDir = Path.Combine(appDir, "whisper");   // Vulkan whisper.cpp server + model
             InitializeComponent();
         }
 
@@ -173,7 +175,7 @@ namespace GupTaServer
                     lblStatus.Text = "⏳ Starting servers...";
                 });
 
-                procWhisper = LaunchScript("whisper_http_server.py");
+                procWhisper = LaunchWhisperServer();   // Vulkan GPU whisper.cpp
                 procBridge  = LaunchScript("bridge_server.py");
                 procWake    = LaunchScript("wake_bridge.py");
 
@@ -271,6 +273,64 @@ namespace GupTaServer
 
         // ── Server lifecycle ──────────────────────────────────────────────────────
 
+        private Process LaunchWhisperServer()
+        {
+            try
+            {
+                string exe   = Path.Combine(whisperDir, "whisper-server.exe");
+                string model = Path.Combine(whisperDir, "ggml-large-v3-turbo.bin");
+                if (!File.Exists(exe) || !File.Exists(model))
+                {
+                    SafeInvoke(delegate() {
+                        MessageBox.Show(
+                            "Vulkan Whisper not found. Expected:\n" + exe + "\n" + model,
+                            "GupTa Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    });
+                    return null;
+                }
+
+                string logDir = Path.Combine(
+                    Environment.GetEnvironmentVariable("TEMP"), "GupTaServer");
+                Directory.CreateDirectory(logDir);
+                string logPath = Path.Combine(logDir, "whisper.log");
+
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName         = exe;
+                // GPU is automatic with the Vulkan build; flash-attn on by default.
+                psi.Arguments        = "-m \"" + model + "\" --host 0.0.0.0 --port 8081 -t 6";
+                psi.WorkingDirectory = whisperDir;   // so ggml-*.dll / whisper.dll resolve
+                psi.UseShellExecute  = false;
+                psi.CreateNoWindow   = true;
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError  = true;
+
+                Process p = new Process();
+                p.StartInfo = psi;
+                StreamWriter logWriter = new StreamWriter(logPath, false);
+                logWriter.AutoFlush = true;
+                object logLock = new object();
+                DataReceivedEventHandler sink = delegate(object s, DataReceivedEventArgs e) {
+                    if (e.Data != null) { lock (logLock) { try { logWriter.WriteLine(e.Data); } catch { } } }
+                };
+                p.OutputDataReceived += sink;
+                p.ErrorDataReceived  += sink;
+                p.EnableRaisingEvents = true;
+                p.Exited += delegate(object s, EventArgs e) { try { logWriter.Close(); } catch { } };
+                p.Start();
+                p.BeginOutputReadLine();
+                p.BeginErrorReadLine();
+                return p;
+            }
+            catch (Exception ex)
+            {
+                SafeInvoke(delegate() {
+                    MessageBox.Show("Failed to start Whisper (Vulkan):\n" + ex.Message,
+                        "GupTa Server", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                });
+                return null;
+            }
+        }
+
         private Process LaunchScript(string script)
         {
             try
@@ -366,13 +426,17 @@ namespace GupTaServer
 
         private bool IsWhisperReady()
         {
+            // whisper.cpp only opens the port AFTER the model finishes loading,
+            // so a successful TCP connect = model ready. Backend-agnostic.
             try
             {
-                HttpWebRequest req = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:8081/docs");
-                req.Timeout = 2000;
-                req.Method  = "GET";
-                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
-                    return (int)resp.StatusCode < 500;
+                using (TcpClient c = new TcpClient())
+                {
+                    IAsyncResult ar = c.BeginConnect("127.0.0.1", 8081, null, null);
+                    bool ok = ar.AsyncWaitHandle.WaitOne(1500);
+                    if (ok) { c.EndConnect(ar); return true; }
+                    return false;
+                }
             }
             catch { return false; }
         }
