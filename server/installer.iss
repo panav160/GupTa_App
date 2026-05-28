@@ -7,7 +7,8 @@ AppName=GupTa Server
 AppVersion=1.0
 DefaultDirName={autopf}\GupTaServer
 DefaultGroupName=GupTa Server
-UninstallDisplayIcon={app}\VoiceCommandServer.exe
+UninstallDisplayIcon={app}\gupta.ico
+SetupIconFile=gupta.ico
 Compression=lzma2
 SolidCompression=yes
 OutputDir=.
@@ -22,12 +23,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Files]
-; Main executable and scripts
+; Icon
+Source: "gupta.ico";               DestDir: "{app}"
+
+; Main executable (GUI)
 Source: "VoiceCommandServer.exe";  DestDir: "{app}"
+
+; Server scripts
 Source: "bridge_server.py";        DestDir: "{app}"
 Source: "wake_bridge.py";          DestDir: "{app}"
 Source: "whisper_http_server.py";  DestDir: "{app}"
 Source: "security.py";             DestDir: "{app}"
+Source: "gen_qr.py";               DestDir: "{app}"
 Source: "requirements.txt";        DestDir: "{app}"
 Source: "setup.bat";               DestDir: "{app}"
 Source: "start.bat";               DestDir: "{app}"
@@ -36,8 +43,8 @@ Source: "start.bat";               DestDir: "{app}"
 Source: "python\*"; DestDir: "{app}\python"; Flags: recursesubdirs
 
 [Icons]
-Name: "{group}\GupTa Server";           Filename: "{app}\VoiceCommandServer.exe"
-Name: "{commondesktop}\GupTa Server";   Filename: "{app}\VoiceCommandServer.exe"; Tasks: desktopicon
+Name: "{group}\GupTa Server";           Filename: "{cmd}"; Parameters: "/c ""{app}\start.bat"""; WorkingDir: "{app}"; IconFilename: "{app}\gupta.ico"
+Name: "{commondesktop}\GupTa Server";   Filename: "{cmd}"; Parameters: "/c ""{app}\start.bat"""; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\gupta.ico"
 Name: "{group}\Uninstall GupTa Server"; Filename: "{uninstallexe}"
 
 [Run]

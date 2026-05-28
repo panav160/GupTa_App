@@ -5,3 +5,5 @@ uvicorn>=0.32.0
 websockets>=13.0
 numpy>=1.26.0
 pycryptodome>=3.20.0
+python-multipart>=0.0.9
+qrcode>=7.4.2
