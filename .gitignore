@@ -1,0 +1,30 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+app/build/
+**/build/
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+*.hprof
+local.properties
+whisper.cpp/.git/
+server/credentials.json
+server/venv/
+server/*.log
+server/python/
+server/*.exe
+
+# Large model files (bundled in APK release)
+app/src/main/assets/whisper/
+app/src/main/assets/whisper_tiny/
+app/libs/*.aar
+
+# Whisper.cpp binaries
+server/whisper.cpp/build_vulkan/

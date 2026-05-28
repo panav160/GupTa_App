@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">GupTa</string>
+    <string name="hold_to_talk">Hold to Talk</string>
+    <string name="tap_and_hold">Tap and hold to speak</string>
+    <string name="processing">Processing…</string>
+    <string name="recording">Recording…</string>
+    <string name="result_hint">Transcription will appear here</string>
+    <string name="microphone_permission_rationale">This app needs microphone access to transcribe your speech into text using the on-device Whisper model.</string>
+    <string name="permission_denied">Microphone permission was denied. Voice transcription requires microphone access.</string>
+    <string name="loading_model">Loading speech model…</string>
+    <string name="model_ready">Ready</string>
+    <string name="error_model_load">Failed to load speech model</string>
+    <string name="error_transcription">Transcription error. Please try again.</string>
+    <string name="error_no_model">Model file not found. Please ensure ggml-tiny.en.bin is in the assets folder.</string>
+    <string name="accessibility_service_description">Voice Command uses this service to open apps from the background after voice commands.</string>
+</resources>
