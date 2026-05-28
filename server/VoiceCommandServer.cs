@@ -275,13 +275,42 @@ namespace GupTaServer
         {
             try
             {
+                // Logs go to %TEMP%\GupTaServer (Program Files isn't writable)
+                string logDir = Path.Combine(
+                    Environment.GetEnvironmentVariable("TEMP"), "GupTaServer");
+                Directory.CreateDirectory(logDir);
+                string logPath = Path.Combine(
+                    logDir, Path.GetFileNameWithoutExtension(script) + ".log");
+
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName         = pythonExe;
-                psi.Arguments        = "\"" + Path.Combine(appDir, script) + "\"";
+                psi.Arguments        = "-u \"" + Path.Combine(appDir, script) + "\"";
                 psi.WorkingDirectory = appDir;
                 psi.UseShellExecute  = false;   // child of THIS process — safe to kill
                 psi.CreateNoWindow   = true;
-                return Process.Start(psi);
+                // Force UTF-8 so arrows / non-English transcriptions never crash on cp1252
+                psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+                psi.EnvironmentVariables["PYTHONUNBUFFERED"] = "1";
+                // Redirect output to a log file (also keeps stdout from a dead handle)
+                psi.RedirectStandardOutput = true;
+                psi.RedirectStandardError  = true;
+
+                Process p = new Process();
+                p.StartInfo = psi;
+                StreamWriter logWriter = new StreamWriter(logPath, false);
+                logWriter.AutoFlush = true;
+                object logLock = new object();
+                DataReceivedEventHandler sink = delegate(object s, DataReceivedEventArgs e) {
+                    if (e.Data != null) { lock (logLock) { try { logWriter.WriteLine(e.Data); } catch { } } }
+                };
+                p.OutputDataReceived += sink;
+                p.ErrorDataReceived  += sink;
+                p.EnableRaisingEvents = true;
+                p.Exited += delegate(object s, EventArgs e) { try { logWriter.Close(); } catch { } };
+                p.Start();
+                p.BeginOutputReadLine();
+                p.BeginErrorReadLine();
+                return p;
             }
             catch (Exception ex)
             {

@@ -1,20 +1,28 @@
 import asyncio
 import json
 import time
+import sys
 import numpy as np
 from faster_whisper import WhisperModel
 from fastapi import FastAPI, UploadFile, File, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 import uvicorn
 
-MODEL_SIZE = "v3-turbo"
+# Force UTF-8 stdout/stderr so non-ASCII transcriptions don't crash on Windows cp1252.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+MODEL_SIZE = "turbo"
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 PORT = 8081
 
-print(f"Loading {MODEL_SIZE}...")
+print(f"Loading {MODEL_SIZE}...", flush=True)
 model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-print(f"Model loaded, server ready on port {PORT}")
+print(f"Model loaded, server ready on port {PORT}", flush=True)
 
 app = FastAPI()
 
@@ -45,7 +53,7 @@ async def inference(
 
     if response_format == "json":
         return JSONResponse({"text": text})
-    return text
+    return PlainTextResponse(text)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)

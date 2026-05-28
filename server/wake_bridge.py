@@ -14,7 +14,14 @@ Protocol (per request):
     [?B]    IV(12) + AES-256-GCM ciphertext + tag(16)
               └─ plaintext = [4B LE text_len][utf-8 text bytes]
 """
-import asyncio, struct, io, httpx, wave, json
+import asyncio, struct, io, httpx, wave, json, sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Force UTF-8 stdout/stderr so non-ASCII never crashes on Windows cp1252 console.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import numpy as np
 import security
 

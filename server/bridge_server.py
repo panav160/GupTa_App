@@ -17,7 +17,15 @@ Per-request (persistent connection):
     [?B]    IV(12) + AES-256-GCM ciphertext + tag(16)
               └─ plaintext = [4B LE text_len][utf-8 text bytes]
 """
-import asyncio, struct, io, httpx, wave, json, time
+import asyncio, struct, io, httpx, wave, json, time, sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Force UTF-8 stdout/stderr so non-ASCII (arrows, accented chars, non-English
+# transcriptions) never crash on Windows' default cp1252 console encoding.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import numpy as np
 import security
 
@@ -43,7 +51,7 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         writer.write(bytes([0x01 if ready else 0x00]))
         await writer.drain()
         if not ready:
-            print(f"[bridge] Whisper not ready — closing {peer}")
+            print(f"[bridge] Whisper not ready - closing {peer}")
             return
 
         # ── Validate token (sent once per connection) ──────────────────────────
@@ -92,7 +100,7 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
             raw = resp.text.strip()
             try:    text = json.loads(raw).get("text", raw).strip()
             except: text = raw
-            print(f"[bridge]  {t1-t0:.2f}s → \"{text}\"")
+            print(f"[bridge]  {t1-t0:.2f}s -> \"{text}\"")
 
             text_bytes = text.encode("utf-8")
             payload    = struct.pack("<I", len(text_bytes)) + text_bytes
