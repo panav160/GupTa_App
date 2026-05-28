@@ -54,30 +54,37 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
             print(f"[bridge] Whisper not ready - closing {peer}")
             return
 
-        # ── Validate token (sent once per connection) ──────────────────────────
-        tok_len_b = await asyncio.wait_for(reader.readexactly(4), timeout=15)
-        tok_len   = struct.unpack("<I", tok_len_b)[0]
-        if tok_len > 256:
-            print(f"[bridge] Rejected {peer}: token too long")
-            return
-        token = (await asyncio.wait_for(reader.readexactly(tok_len), timeout=10)).decode()
-
-        if not security.validate_token(token):
-            print(f"[bridge] Rejected {peer}: wrong token")
-            return
-
-        # Token OK — confirm to phone
-        writer.write(bytes([0x01]))
-        await writer.drain()
-        print(f"[bridge] Authenticated {peer}")
-
-        # ── Request loop ───────────────────────────────────────────────────────
+        # ── Unified request loop ───────────────────────────────────────────────
+        # Each 4-byte header is EITHER a token length (<=256) or an encrypted
+        # audio-payload length (always many KB). We accept audio with or without
+        # a preceding token on a given connection: AES-256-GCM already
+        # authenticates every payload, so a valid ciphertext proves the sender
+        # holds the shared key. This tolerates the phone reusing a socket the
+        # server already closed (Android keeps reporting it "connected"), which
+        # otherwise produced spurious "token too long" rejections.
         while True:
-            enc_len_b = await asyncio.wait_for(reader.readexactly(4), timeout=120)
-            enc_len   = struct.unpack("<I", enc_len_b)[0]
-            enc_data  = await asyncio.wait_for(reader.readexactly(enc_len), timeout=30)
+            hdr = await asyncio.wait_for(reader.readexactly(4), timeout=300)
+            n   = struct.unpack("<I", hdr)[0]
 
-            plain        = security.decrypt(enc_data)
+            # Small value => token handshake (validate + ack, then continue)
+            if n <= 256:
+                token = (await asyncio.wait_for(
+                    reader.readexactly(n), timeout=10)).decode("utf-8", "replace")
+                if not security.validate_token(token):
+                    print(f"[bridge] Rejected {peer}: wrong token")
+                    return
+                writer.write(bytes([0x01]))
+                await writer.drain()
+                print(f"[bridge] Authenticated {peer}")
+                continue
+
+            # Otherwise it's an encrypted audio payload of length n
+            enc_data = await asyncio.wait_for(reader.readexactly(n), timeout=30)
+            try:
+                plain = security.decrypt(enc_data)
+            except Exception:
+                print(f"[bridge] Rejected {peer}: bad encryption (wrong key)")
+                return
             sample_count = struct.unpack("<I", plain[:4])[0]
             audio_bytes  = plain[4: 4 + sample_count * 4]
 
