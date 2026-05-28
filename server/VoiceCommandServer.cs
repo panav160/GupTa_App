@@ -447,24 +447,16 @@ namespace GupTaServer
         {
             try
             {
-                string appData   = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                string credsPath = Path.Combine(appData, "GupTaServer", "credentials.json");
-                if (!File.Exists(credsPath)) return;
-
-                string json   = File.ReadAllText(credsPath);
-                string token  = ExtractJson(json, "token");
-                string aesKey = ExtractJson(json, "aes_key");
-                if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(aesKey)) return;
-
-                string ip        = GetLocalIp();
-                string qrContent = ip + ":8765|" + token + "|" + aesKey;
-
+                // Generate the QR straight from the server's own security module
+                // (gen_qr.py with no args calls security.qr_string). This guarantees
+                // the QR's token+key are EXACTLY what the bridge validates/decrypts —
+                // no separate JSON parsing that could encode a stale/mismatched key.
                 string genScript = Path.Combine(appDir, "gen_qr.py");
                 if (!File.Exists(genScript)) return;
 
                 ProcessStartInfo psi = new ProcessStartInfo();
                 psi.FileName               = pythonExe;
-                psi.Arguments              = "\"" + genScript + "\" \"" + qrContent + "\"";
+                psi.Arguments              = "\"" + genScript + "\"";
                 psi.WorkingDirectory       = appDir;
                 psi.UseShellExecute        = false;
                 psi.CreateNoWindow         = true;
