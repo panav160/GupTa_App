@@ -78,15 +78,25 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
                 print(f"[bridge] Authenticated {peer}")
                 continue
 
-            # Otherwise it's an encrypted audio payload of length n
-            enc_data = await asyncio.wait_for(reader.readexactly(n), timeout=30)
+            # Otherwise n is an audio request. It's EITHER:
+            #   secure:  n = encrypted-blob length -> n bytes that AES-decrypt to
+            #            [4B sample_count][float32...]
+            #   plain :  n = sample_count          -> n*4 bytes of raw float32
+            # The phone uses plain mode when it has no token/key configured. We
+            # detect which by trying to decrypt the first n bytes; if that fails,
+            # we fall back to reading the remaining float bytes as plain audio.
+            first = await asyncio.wait_for(reader.readexactly(n), timeout=30)
+            secure = True
             try:
-                plain = security.decrypt(enc_data)
+                plain        = security.decrypt(first)
+                sample_count = struct.unpack("<I", plain[:4])[0]
+                audio_bytes  = plain[4: 4 + sample_count * 4]
             except Exception:
-                print(f"[bridge] Rejected {peer}: bad encryption (wrong key)")
-                return
-            sample_count = struct.unpack("<I", plain[:4])[0]
-            audio_bytes  = plain[4: 4 + sample_count * 4]
+                # Plain mode: n was the sample count; we've read n of the n*4
+                # float bytes, so pull the remaining n*3 and treat as raw audio.
+                secure = False
+                rest = await asyncio.wait_for(reader.readexactly(n * 3), timeout=30)
+                audio_bytes = first + rest
 
             # Float32 → WAV
             buf = io.BytesIO()
@@ -110,9 +120,13 @@ async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
             print(f"[bridge]  {t1-t0:.2f}s -> \"{text}\"")
 
             text_bytes = text.encode("utf-8")
-            payload    = struct.pack("<I", len(text_bytes)) + text_bytes
-            enc_resp   = security.encrypt(payload)
-            writer.write(struct.pack("<I", len(enc_resp)) + enc_resp)
+            if secure:
+                payload  = struct.pack("<I", len(text_bytes)) + text_bytes
+                enc_resp = security.encrypt(payload)
+                writer.write(struct.pack("<I", len(enc_resp)) + enc_resp)
+            else:
+                # Plain mode response: [4B text_len][utf-8 text]
+                writer.write(struct.pack("<I", len(text_bytes)) + text_bytes)
             await writer.drain()
 
     except (asyncio.IncompleteReadError, ConnectionResetError, asyncio.TimeoutError):
